@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # PostgreSQL Database (Persistent Metadata)
+  # ==========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: netlaunch-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: netlaunch
+      POSTGRES_PASSWORD: netlaunch_secret_2026
+      POSTGRES_DB: netlaunch_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netlaunch -d netlaunch_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # Redis Cache & Queue Broker (BullMQ / PubSub)
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: netlaunch-redis
+    restart: always
+    command: redis-server --requirepass netlaunch_redis_pass_2026 --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "netlaunch_redis_pass_2026", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # MinIO Object Storage (Local S3 Emulator)
+  # ==========================================
+  minio:
+    image: minio/minio:latest
+    container_name: netlaunch-minio
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: netlaunch_minio_admin
+      MINIO_ROOT_PASSWORD: netlaunch_minio_secret_2026
+    ports:
+      - "9000:9000" # API Port
+      - "9001:9001" # Web Console Port
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Helper service to automatically initialize MinIO buckets
+  minio-createbuckets:
+    image: minio/mc:latest
+    container_name: netlaunch-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Waiting for MinIO...' &&
+      mc alias set netlaunch-local http://minio:9000 netlaunch_minio_admin netlaunch_minio_secret_2026 &&
+      echo 'Creating netlaunch-artifacts bucket...' &&
+      mc mb --ignore-existing netlaunch-local/netlaunch-artifacts &&
+      mc policy set download netlaunch-local/netlaunch-artifacts &&
+      echo 'Creating netlaunch-logs bucket...' &&
+      mc mb --ignore-existing netlaunch-local/netlaunch-logs &&
+      mc policy set download netlaunch-local/netlaunch-logs &&
+      echo 'MinIO Buckets ready!'
+      "
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

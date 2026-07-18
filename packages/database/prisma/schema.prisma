@@ -1,0 +1,143 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  name           String?
+  avatarUrl      String?
+  githubId       String   @unique
+  githubUsername String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  projects       Project[]
+  deployments    Deployment[]
+  installations  GitHubInstallation[]
+}
+
+model GitHubInstallation {
+  id             String   @id @default(uuid())
+  installationId BigInt   @unique // GitHub App Installation ID
+  accountLogin   String   // User or Org login
+  accountType    String   // "User" | "Organization"
+  accountAvatar  String?
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  projects       Project[]
+
+  @@index([userId])
+}
+
+model Project {
+  id               String   @id @default(uuid())
+  name             String   @unique // Project slug (e.g., "my-portfolio")
+  repoFullName     String   // e.g., "torvalds/linux"
+  repoId           BigInt   // GitHub Repository ID
+  defaultBranch    String   @default("main")
+  framework        String   @default("NEXT") // NEXT, VITE, REACT, STATIC, NODE
+  buildCommand     String?
+  outputDirectory  String?
+  installCommand   String?
+  rootDirectory    String   @default("./")
+  
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  installationId   String?
+  installation     GitHubInstallation? @relation(fields: [installationId], references: [id], onDelete: SetNull)
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  deployments      Deployment[]
+  domains          Domain[]
+  envVars          EnvironmentVariable[]
+
+  @@index([userId])
+  @@index([repoFullName])
+}
+
+enum DeploymentStatus {
+  QUEUED
+  BUILDING
+  READY
+  FAILED
+  CANCELED
+}
+
+model Deployment {
+  id               String           @id @default(uuid())
+  projectId        String
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  status           DeploymentStatus @default(QUEUED)
+  commitHash       String
+  commitMessage    String
+  commitAuthor     String
+  branch           String
+  
+  url              String?          // e.g., "sunny-river-abc123.netlaunch.app"
+  buildLogsUrl     String?          // S3/R2 path to archived logs
+  artifactPath     String?          // S3/R2 directory for build artifacts
+  
+  durationMs       Int?
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  logs             BuildLog[]
+
+  @@index([projectId, createdAt(sort: Desc)])
+  @@index([userId])
+}
+
+model BuildLog {
+  id           String     @id @default(uuid())
+  deploymentId String
+  deployment   Deployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+  timestamp    DateTime   @default(now())
+  level        String     @default("INFO") // INFO, WARN, ERROR, COMMAND
+  message      String
+  
+  @@index([deploymentId, timestamp(sort: Asc)])
+}
+
+model Domain {
+  id         String   @id @default(uuid())
+  name       String   @unique // Custom or subdomain e.g. "foo.com" or "foo.netlaunch.app"
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  isVerified Boolean  @default(false)
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+model EnvironmentVariable {
+  id        String   @id @default(uuid())
+  key       String
+  value     String   // Encrypted/protected variable value
+  target    String[] // ["PRODUCTION", "PREVIEW"]
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, key])
+  @@index([projectId])
+}
