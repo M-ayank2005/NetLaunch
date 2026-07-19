@@ -53,11 +53,7 @@ export function setupLogStreamSocket(io: Server) {
 
         socket.emit("deployment:log:history", existingLogs);
 
-        // Check if deployment is currently BUILDING or QUEUED and simulate live build steps for interactive UI testing
-        const deployment = await prisma.deployment.findUnique({ where: { id: deploymentId } });
-        if (deployment && (deployment.status === DeploymentStatus.BUILDING || deployment.status === DeploymentStatus.QUEUED)) {
-          simulateLiveBuildStream(io, deploymentId);
-        }
+        // Historical logs emitted above. Real-time logs are streamed live via Redis PubSub from apps/worker.
       } catch (err) {
         console.error("❌ Error fetching historical logs for socket:", err);
       }

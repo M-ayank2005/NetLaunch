@@ -11,6 +11,10 @@ export interface GitHubUserProfile {
 
 export class GitHubOAuthService {
   public static getAuthorizationUrl(): string {
+    if (env.GITHUB_CLIENT_ID.startsWith("mock_")) {
+      // During local development with mock credentials, redirect immediately to callback with a mock authorization code
+      return `${env.GITHUB_CALLBACK_URL}?code=mock_authorization_code_2026`;
+    }
     const scopes = ["read:user", "user:email"].join(" ");
     return `https://github.com/login/oauth/authorize?client_id=${env.GITHUB_CLIENT_ID}&redirect_uri=${encodeURIComponent(env.GITHUB_CALLBACK_URL)}&scope=${scopes}`;
   }

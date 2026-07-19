@@ -1,0 +1,34 @@
+{
+  "name": "@netlaunch/proxy",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.690.0",
+    "@netlaunch/database": "workspace:*",
+    "@netlaunch/shared": "workspace:*",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "http-proxy": "^1.18.1",
+    "ioredis": "^5.4.1",
+    "mime-types": "^2.1.35",
+    "tar-fs": "^3.0.6"
+  },
+  "devDependencies": {
+    "@netlaunch/config": "workspace:*",
+    "@types/express": "^5.0.0",
+    "@types/http-proxy": "^1.17.15",
+    "@types/mime-types": "^2.1.4",
+    "@types/node": "^22.8.1",
+    "@types/tar-fs": "^2.0.4",
+    "rimraf": "^6.0.1",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3"
+  }
+}
