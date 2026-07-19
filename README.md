@@ -1,171 +1,157 @@
-# NetLaunch — Enterprise Cloud Deployment Platform
+# NetLaunch — Distributed Cloud Deployment Engine & Edge Ingress Control Plane
 
 [![Monorepo](https://img.shields.io/badge/Monorepo-Turborepo%20%2B%20pnpm-blue.svg)](https://turbo.build)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6%2B-3178C6.svg)](https://www.typescriptlang.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-15%20App%20Router-black.svg)](https://nextjs.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1.svg)](https://www.postgresql.org/)
-[![Redis](https://img.shields.io/badge/Redis-7%20BullMQ-DC382D.svg)](https://redis.io/)
-[![Docker](https://img.shields.io/badge/Docker-Isolated%20Builds-2496ED.svg)](https://www.docker.com/)
+[![Docker Engine](https://img.shields.io/badge/Docker-Isolated%20Builds-2496ED.svg)](https://www.docker.com/)
+[![BullMQ & Redis](https://img.shields.io/badge/Queue-BullMQ%20%2B%20Redis%207-DC382D.svg)](https://redis.io/)
+[![MinIO S3](https://img.shields.io/badge/Storage-MinIO%20S3%20Object%20Store-C72C48.svg)](https://min.io/)
+[![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL%2016-4169E1.svg)](https://www.postgresql.org/)
 
-**NetLaunch** is a production-grade, distributed cloud deployment engine designed from first principles. Modeled after the architectural core of **Vercel, Railway, and GitHub Actions**, NetLaunch provides transparent, highly scalable, containerized deployments with a stunning Glassmorphism control plane.
+**NetLaunch** is a production-grade, distributed cloud deployment and edge routing engine modeled after the core architectural principles of **Vercel, Netlify, Railway, and GitHub Actions**. 
 
-Unlike simple minimum viable clones, NetLaunch is engineered with the rigor, fault tolerance, and security primitives of an enterprise platform: multi-tenant PostgreSQL schemas, least-privilege GitHub Apps, asynchronous Redis/BullMQ job orchestration, real-time WebSocket log streaming, and isolated Docker container build pipelines.
+Rather than relying on monolithic deployment scripts, NetLaunch decouples the system into distinct control plane APIs, asynchronous queue brokers, containerized worker sandboxes, immutable object storage buckets, and high-performance edge reverse proxies. Every component is designed to handle high concurrency, multi-tenant isolation, and zero-downtime routing.
 
 ---
 
-## 🏗️ System Architecture
+## 🏗️ Core Systems & Distributed Architecture
 
 ```mermaid
 graph TD
-    subgraph Control_Plane ["Control Plane (apps/web + apps/api)"]
-        UI["Next.js 15 UI (apps/web)\nGlassmorphism + Framer Motion"]
-        API["Express 5 + TypeScript API (apps/api)\nSecurity + Route Handlers + Socket.IO"]
+    subgraph Control_Plane ["Control Plane & API Layer"]
+        UI["Dashboard & Client Layer (apps/web)"]
+        API["API Orchestration Server (apps/api)\nExpress 5 + Socket.IO Control Hub"]
     end
 
-    subgraph Persistence_Layer ["Data & State Persistence"]
-        PG[(PostgreSQL 16\nPrisma Multi-Tenant Schema)]
-        Redis[(Redis 7\nBullMQ Queues + PubSub)]
-        MinIO[(MinIO S3\nBuild Artifact Bundle Storage)]
+    subgraph Broker_And_Storage ["Persistence & Queue Infrastructure"]
+        PG[(PostgreSQL 16\nMulti-Tenant Relational Schema)]
+        Redis[(Redis 7 Cluster\nBullMQ Job Queues + PubSub)]
+        MinIO[(MinIO / AWS S3\n`netlaunch-artifacts` Immutable Bundles)]
     end
 
-    subgraph Build_Engine ["Worker Execution Engine (apps/worker)"]
-        Worker1["NetLaunch Worker #01\nIsolated Docker Engine (`node:20-alpine`)"]
-        Worker2["NetLaunch Worker #02\nIsolated Docker Engine (`node:20-alpine`)"]
+    subgraph Build_Workers ["Worker Execution Engine (apps/worker)"]
+        Worker1["Worker Node #01\nDocker Sandbox (`node:20-alpine`)"]
+        Worker2["Worker Node #02\nDocker Sandbox (`node:20-alpine`)"]
     end
 
-    UI <== "HTTP / REST API (withCredentials Cookie)" ==> API
-    UI <== "Socket.IO WebSocket (Live Log Stream)" ==> API
-    API <== "Prisma ORM Queries & Transactions" ==> PG
-    API == "Push Build Jobs (`BullMQ`)" ==> Redis
-    Worker1 <== "Pop Job & Publish Terminal Output to PubSub" ==> Redis
-    Worker2 <== "Pop Job & Publish Terminal Output to PubSub" ==> Redis
-    Worker1 == "Upload Compressed Build Bundle (`dist/`)" ==> MinIO
-    Worker2 == "Upload Compressed Build Bundle (`dist/`)" ==> MinIO
+    subgraph Edge_Ingress ["Edge Reverse Proxy & Ingress (apps/proxy)"]
+        Proxy["Edge Router (`*.netlaunch.localhost`)\nIn-Memory LRU Cache + Tarball Extractor"]
+    end
+
+    UI <== "HTTP REST / Cookie Auth" ==> API
+    UI <== "Socket.IO Live Terminal PubSub" ==> API
+    API <== "Prisma Atomic Transactions" ==> PG
+    API == "Dispatch Job (`deployment-build-queue`)" ==> Redis
+    Worker1 <== "Pop Job & Publish Execution Logs" ==> Redis
+    Worker2 <== "Pop Job & Publish Execution Logs" ==> Redis
+    Worker1 == "Archive & Upload `.tar.gz` Bundle" ==> MinIO
+    Worker2 == "Archive & Upload `.tar.gz` Bundle" ==> MinIO
+    Proxy <== "Resolve Hostname to Deployment ID" ==> PG
+    Proxy <== "Stream & Decompress Static Bundle" ==> MinIO
 ```
 
 ---
 
-## 🚀 Key Features (Milestone 1 — Completed & Verified)
+## ⚙️ Technical Mechanics & Subsystems
 
-### 1. High-Contrast Glassmorphism Control Plane (`apps/web`)
-- **Tailored Dark Mode (Zero AI Gradients)**: Built with deep `#09090b` obsidian backgrounds, `backdrop-blur-md` glass panels, crisp 1px borders (`border-zinc-800/80`), and instantaneous micro-animations via Framer Motion.
-- **Repository Import Wizard (`/new`)**: Step-by-step repository picker integrated with GitHub App access tokens, automatic framework detection (`NEXT`, `VITE`, `REACT`, `STATIC`, `NODE`), and secure environment variable configuration (`PRODUCTION`, `PREVIEW`).
-- **Interactive Terminal Console (`AnimatedLogViewer`)**: Real-time terminal log viewer powered by Framer Motion, color-coded level badges (`INFO`, `WARN`, `ERROR`, `COMMAND`), and auto-scrolling execution steps.
+### 1. Ephemeral Containerized Build Sandboxes (`apps/worker`)
+- **Docker Engine Isolation**: Every deployment request executes inside an ephemeral, non-root Docker container (`node:20-alpine`). This guarantees complete filesystem and environment variable isolation, preventing cross-tenant contamination and noisy-neighbor resource leaks.
+- **Universal Framework Resolution**: The build worker automatically detects and extracts production artifacts across modern framework conventions (`dist/`, `.next/`, `build/`, and `out/`).
+- **Immutable Artifact Bundling**: Upon completion, the worker packages the static build output into an immutable `.tar.gz` tarball (`{deploymentId}.tar.gz`) and streams it directly into **MinIO S3 Object Storage**.
 
-### 2. Dual-Mode GitHub Security & Authentication (`apps/api`)
-- **GitHub OAuth 2.0 Flow (`/auth/github`)**: Seamless user authentication issuing signed, HTTP-Only `Strict` JWT cookies.
-- **Least-Privilege GitHub Apps (`/github/install`)**: Fine-grained repository access control via GitHub Apps using RSA private keys and temporary Installation Access Tokens (`IAT`). Users only expose repositories they explicitly authorize.
+### 2. Asynchronous Queue Orchestration (`BullMQ + Redis 7`)
+- **Decoupled API & Worker Planes**: Incoming deployment triggers (`POST /api/v1/projects/:id/deploy`) do not block HTTP request threads. Instead, tasks are pushed to a high-concurrency Redis queue (`deployment-build-queue`).
+- **Automatic Retries & Exponential Backoff**: BullMQ workers process jobs with configurable concurrency limits, automatic backoff handling for network hiccups, and dead-letter queue isolation for persistent build failures.
+- **Distributed PubSub Log Streaming**: As the Docker build container outputs `stdout` and `stderr`, workers publish log chunks over Redis PubSub (`deployment:logs:{deploymentId}`). The control plane (`apps/api`) subscribes to these channels and multiplexes them across WebSocket connections (`Socket.IO`) for low-latency terminal viewing.
 
-### 3. Enterprise Database Schema (`@netlaunch/database`)
-- **Multi-Tenant PostgreSQL Architecture**: Cleanly modeled `User`, `GitHubInstallation`, `Project`, `Deployment`, `BuildLog`, `Domain`, and `EnvironmentVariable` entities.
-- **Atomic Transactions**: Project initialization and deployment triggers run within strict database transactions (`prisma.$transaction`) to guarantee zero orphan records.
-- **Optimized Indexing**: Composite indexes (`@@index([deploymentId, timestamp])`) ensure sub-millisecond build log retrieval even under high logging volumes.
+### 3. Edge Reverse Proxy & Ingress Engine (`apps/proxy`)
+- **Wildcard Subdomain Routing (`*.netlaunch.localhost`)**: The custom HTTP reverse proxy intercepts incoming web traffic, extracts the target subdomain, and queries PostgreSQL to resolve the active `Deployment` ID.
+- **On-the-Fly S3 Extraction & LRU Caching**: When a request arrives, the proxy fetches the corresponding `.tar.gz` bundle from MinIO, decompresses files into an in-memory `lru-cache`, and serves static assets with exact MIME types and caching headers (`Cache-Control: public, max-age=31536000`).
+- **Single-Page Application (SPA) Fallback**: Automatically falls back to serving `index.html` for client-side routing when nested file paths are not found in the tarball.
 
-### 4. Real-Time Distributed Log Streaming (`Socket.IO + BullMQ`)
-- **BullMQ Background Jobs**: Non-blocking build queueing (`queueDeploymentJob`) offloading build tasks to Redis.
-- **WebSocket Log Broadcasting**: Live emission of build commands and terminal output to connected web clients over Socket.IO rooms (`project:{projectId}:logs`).
+### 4. Least-Privilege GitHub Security Architecture (`apps/api`)
+- **Fine-Grained GitHub Apps**: Instead of requesting global OAuth scopes across a user's entire GitHub account, NetLaunch integrates via fine-grained GitHub Apps (`/github/install`).
+- **Rotating Cryptographic Access Tokens**: The backend signs RS256 JSON Web Tokens using a private RSA key (`GITHUB_APP_PRIVATE_KEY`) to exchange for short-lived 1-hour Installation Access Tokens (`IAT`), ensuring least-privilege repository access during the git clone step.
 
 ---
 
-## 📦 Monorepo Structure
+## 📦 Monorepo Workspace Organization
 
-NetLaunch uses **Turborepo** and **pnpm workspaces** for strict encapsulation and zero-config build caching across applications and packages:
+NetLaunch uses **Turborepo** and **pnpm workspaces** to enforce clear boundaries between services, shared database schemas, and configuration packages:
 
 ```
 netlaunch/
 ├── apps/
-│   ├── web/                 # Next.js 15 (App Router) Control Plane Dashboard
-│   ├── api/                 # Express 5 + TypeScript + Socket.IO Control Plane API
-│   └── worker/              # [Phase 2] Node.js/Docker BullMQ Build Engine Worker
+│   ├── api/                 # Express 5 + TypeScript + Socket.IO Control Plane
+│   ├── worker/              # BullMQ Consumer + Docker Container Engine + MinIO Archiver
+│   ├── proxy/               # Edge Reverse Proxy + Subdomain Router + S3 Tarball Extractor
+│   └── web/                 # Next.js 15 (App Router) Control Plane Dashboard
 ├── packages/
-│   ├── database/            # Prisma Schema, Migrations, Seeders & Client Singleton
-│   ├── shared/              # Shared Zod Validation Schemas, DTOs & Enums
-│   ├── ui/                  # Glass Card, Status Badges, Skeleton & Terminal UI Primitives
-│   └── config/              # Shared TSConfig & ESLint base definitions
+│   ├── database/            # Prisma Multi-Tenant Schema, Migrations, Seeders & Client
+│   ├── shared/              # Shared Zod Schemas, Data Transfer Objects & Type Definitions
+│   ├── ui/                  # Reusable UI Primitives and Component Tokens
+│   └── config/              # Base TypeScript and ESLint configuration sets
 ├── docs/
-│   └── reference/           # Deep-dive 10-part architectural reference guides
-├── infrastructure/
-│   └── docker-compose.yml   # PostgreSQL 16, Redis 7 & MinIO local dev stack
-└── turbo.json               # Turborepo task pipeline and cache definitions
+│   └── reference/           # Architectural deep-dive documentation series
+└── infrastructure/
+    └── docker-compose.yml   # Local development infrastructure (PostgreSQL, Redis, MinIO)
 ```
 
 ---
 
-## 📚 Encyclopedic Reference Guides
-
-Every milestone built inside NetLaunch includes a comprehensive **10-part technical deep-dive** (*Theory, Internal Working, Architecture, Database Design, APIs, Code, Security, Scaling, Interview Discussion, and Production Improvements*):
-
-1. **[Monorepo Architecture & Infrastructure](file:///C:/Projects/NetLaunch/docs/reference/01-monorepo-and-infrastructure.md)** — Workspace boundaries, Turborepo pipelines, and Dockerized core services.
-2. **[Database Design & Prisma ORM Schema](file:///C:/Projects/NetLaunch/docs/reference/02-database-and-prisma-schema.md)** — Multi-tenancy, relational integrity, and index optimization.
-3. **[GitHub OAuth & JWT Cookie Authentication](file:///C:/Projects/NetLaunch/docs/reference/03-github-oauth-and-jwt-authentication.md)** — Stateless authentication, CSRF defense, and HTTP-Only cookie security.
-4. **[GitHub App Integration & Project APIs](file:///C:/Projects/NetLaunch/docs/reference/04-github-app-and-project-apis.md)** — RSA/JWT installation token exchange, repository filtering, and atomic project creation.
-5. **[Glassmorphism Dashboard & Repository Picker](file:///C:/Projects/NetLaunch/docs/reference/05-glassmorphism-dashboard-and-repo-selection.md)** — Design system tokens, Framer Motion animations, and real-time terminal UI.
-
----
-
-## 🛠️ Quickstart & Local Development
+## 🛠️ Quickstart & Local Infrastructure
 
 ### Prerequisites
 - **Node.js**: `v20.x` or higher
 - **pnpm**: `v9.x` (`npm install -g pnpm`)
-- **Docker & Docker Compose**: For local PostgreSQL, Redis, and MinIO instances
+- **Docker & Docker Compose**: Required for running PostgreSQL, Redis, MinIO, and build workers
 
-### 1. Clone & Install Dependencies
+### 1. Clone & Install Workspace Dependencies
 ```bash
 git clone https://github.com/M-ayank2005/NetLaunch.git
 cd NetLaunch
 pnpm install
 ```
 
-### 2. Boot Local Infrastructure Services
-Start PostgreSQL 16, Redis 7, and MinIO object storage in the background:
+### 2. Launch Infrastructure Services (PostgreSQL, Redis, MinIO)
+Boot the persistence layer in background Docker containers:
 ```bash
 cd infrastructure
 docker compose up -d
 cd ..
 ```
+*Note: The `netlaunch-minio-init` container runs once to initialize the `netlaunch-artifacts` and `netlaunch-logs` S3 buckets and exits cleanly with code `0`.*
 
-### 3. Setup Environment Variables
-Copy `.env.example` to `.env` in the root directory (or ensure default values match `docker-compose.yml`):
-```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/netlaunch?schema=public"
-REDIS_URL="redis://:postgres@localhost:6379/0"
-JWT_SECRET="super-secret-development-jwt-key-minimum-32-chars"
-CLIENT_URL="http://localhost:3000"
-API_URL="http://localhost:4000"
-```
-
-### 4. Push Database Schema & Seed Data
-Push the Prisma schema to your local PostgreSQL database and seed sample projects:
+### 3. Synchronize Database Schema & Seed Mock Data
+Push the relational schema to PostgreSQL and populate initial demo tenants:
 ```bash
 pnpm --filter @netlaunch/database db:push
 pnpm --filter @netlaunch/database db:seed
 ```
 
-### 5. Verify Build Pipeline across Monorepo
-Ensure all packages (`@netlaunch/shared`, `@netlaunch/database`, `@netlaunch/ui`, `@netlaunch/api`, `@netlaunch/web`) compile with zero errors:
-```bash
-pnpm turbo run build
-```
-
-### 6. Launch Development Servers
-Start the full control plane (both `apps/api` and `apps/web` concurrently):
+### 4. Run All Services Simultaneously (`Control Plane + Worker + Proxy`)
+Start the complete distributed ecosystem using Turborepo concurrency:
 ```bash
 pnpm turbo run dev
 ```
 
-- **Control Plane UI**: Open [http://localhost:3000](http://localhost:3000)
-- **Control Plane API**: Open [http://localhost:4000](http://localhost:4000)
+| Service | Port | Description |
+| :--- | :--- | :--- |
+| **Control Plane Dashboard** | `http://localhost:3000` | Management UI for project configurations and build logs |
+| **Control Plane API Server** | `http://localhost:4000` | REST endpoints, OAuth verification, and Socket.IO hub |
+| **Edge Reverse Proxy** | `http://localhost:8080` | Ingress router for deployed wildcard web applications |
+| **MinIO S3 Console** | `http://localhost:9001` | Object storage admin view (`netlaunch_minio_admin` / `netlaunch_minio_secret_2026`) |
 
 ---
 
-## 🗺️ Roadmap & Upcoming Milestones
+## 📚 Technical Reference Library
 
-- [x] **Milestone 1**: Monorepo Foundation, Database Schema, GitHub OAuth & App Auth, Project Management APIs, Socket.IO Log Streaming, Glassmorphism UI Dashboard.
-- [ ] **Milestone 2 (In Progress)**: Isolated Docker Build Engine (`apps/worker`), BullMQ Job Consumer, Git Repository Cloning, Container Build Sandbox (`node:20-alpine`), and MinIO Artifact Bundling.
-- [ ] **Milestone 3**: Edge Proxy / Reverse Proxy Ingress Router (`apps/proxy`), Wildcard Subdomain Routing (`*.netlaunch.app`), and Zero-Downtime Blue/Green Deployments.
-- [ ] **Milestone 4**: Custom Domains, Automatic TLS/SSL Provisioning via Let's Encrypt, and Distributed Rate Limiting.
-- [ ] **Milestone 5**: Advanced Observability, CPU/Memory Metrics Collector, and Webhook Notifications.
+Explore our comprehensive engineering deep-dives detailing the internal mechanics of each subsystem:
+
+1. **[Monorepo Architecture & Infrastructure](file:///C:/Projects/NetLaunch/docs/reference/01-monorepo-and-infrastructure.md)** — Workspace isolation, build caching, and Docker orchestration.
+2. **[Database Design & Relational Modeling](file:///C:/Projects/NetLaunch/docs/reference/02-database-and-prisma-schema.md)** — Multi-tenancy transactions, indexing strategies, and relational integrity.
+3. **[GitHub OAuth & Stateless Authentication](file:///C:/Projects/NetLaunch/docs/reference/03-github-oauth-and-jwt-authentication.md)** — Cryptographic cookie verification and token exchange mechanics.
+4. **[GitHub App Integration & RSA Token Rotation](file:///C:/Projects/NetLaunch/docs/reference/04-github-app-and-project-apis.md)** — Installation access tokens (`IAT`) and least-privilege repository cloning.
+5. **[Control Plane & Real-Time Log Architecture](file:///C:/Projects/NetLaunch/docs/reference/05-glassmorphism-dashboard-and-repo-selection.md)** — WebSocket multiplexing and terminal stream processing.
 
 ---
 
